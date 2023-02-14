@@ -1,6 +1,7 @@
 {
   "name": "puppeteer-typescript-boilerplate",
   "version": "0.1.0",
+  "type": "module",
   "description": "A boilerplate for Puppeteer + TypeScript",
   "repository": "https://github.com/sosmii/puppeteer-typescript-boilerplate",
   "author": "sosmii",

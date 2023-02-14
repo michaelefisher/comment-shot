@@ -1,50 +1,51 @@
 import puppeteer from 'puppeteer';
-import winston from 'winston';
-
-import { URL } from 'url';
-import { mkdirSync, existsSync } from 'fs';
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  defaultMeta: { service: 'user-service' },
-  transports: [
-    //
-    // - Write all logs with importance level of `error` or less to `error.log`
-    // - Write all logs with importance level of `info` or less to `combined.log`
-    //
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-  ],
-});
-
-
-// If we're not in production then log to the `console` with the format:
-// `${info.level}: ${info.message} JSON.stringify({ ...rest }) `
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple(),
-  }));
-}
 
 const REDDIT_USER = process.env.REDDIT_USER;
 
-const openBrowser = async () => {
-  const browser = await puppeteer.launch({ headless: true });
-  const page = await browser.newPage();
-  await page.goto(`https://old.reddit.com/user/${REDDIT_USER}/submitted/`);
+const collectPermalinks = async (nextPageUrl?: string | null): Promise<{ 'links': Array<string | null>, 'nextPageUrl': Array<string | null> }> => {
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const [page] = await browser.pages();
+  await page.goto(nextPageUrl ? nextPageUrl : `https://old.reddit.com/user/${REDDIT_USER}/comments/`, { waitUntil: 'networkidle0' });
 
-  const [response] = await Promise.all([
-    // page.waitForNavigation(waitOptions),
-    page.click('#thing_t3_ui5f6a > div.entry.unvoted > div.top-matter > ul > li.first > a'),
-  ]);
+  let links = [];
+  links = await page.evaluate(async () => {
+    window.scrollBy(0, document.body.clientHeight);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    return Array.from(document.querySelectorAll('.entry > ul.flat-list.buttons > li.first > .bylink'))
+      .map((el) => el.getAttribute('href'));
+  });
 
-  // logger.log({
-  //   level: 'info',
-  //   message: response
-  // });
-
+  const nextUrl = await page.evaluate(async () => {
+    return Array.from(document.querySelectorAll('.nav-buttons > .nextprev > .next-button > a'))
+      .map((el) => el.getAttribute('href'))
+  })
   browser.close();
+  return {
+    'links': links,
+    'nextPageUrl': nextUrl
+  }
 };
 
-openBrowser();
+const getScreenshotsFromPage = async (links: Array<string | null>): Promise<void> => {
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const [page] = await browser.pages();
+  for (let link of links) {
+    if (link) {
+      await page.goto(link, { waitUntil: 'networkidle0', timeout: 10000 });
+      await page.screenshot({ path: `screenshots/screenshot-${(Math.random() + 1).toString(36).substring(7)}.png`, fullPage: true });
+      console.log(`All done, check the screenshot. ✨`);
+    }
+  }
+}
+// While next button URL is not empty or undefined,
+// get screenshots and next page and recurse
+const recursivelyGoToNextPage = async (pagePermalinksAndNextPage: { 'links': Array<string | null>, 'nextPageUrl': Array<string | null> }) => {
+  console.log(`Moving onto page: ${pagePermalinksAndNextPage.nextPageUrl}`)
+  await getScreenshotsFromPage(pagePermalinksAndNextPage.links);
+  if (!pagePermalinksAndNextPage.nextPageUrl[0]) return;
+  recursivelyGoToNextPage(pagePermalinksAndNextPage);
+}
+
+// Get first page and next page
+let pagePermalinksAndNextPage = await collectPermalinks();
+recursivelyGoToNextPage(pagePermalinksAndNextPage);
