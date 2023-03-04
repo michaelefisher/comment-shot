@@ -55,10 +55,14 @@ const getScreenshotsFromPage = async (links: Array<string | null>): Promise<void
       page.close();
 
       // Watermark image
+      const imageBox = new Jimp(1000, 60, 0xFFFFFFFF);
+
       const image = await Jimp.read(path);
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
-      image.print(font, Jimp.HORIZONTAL_ALIGN_LEFT, Jimp.VERTICAL_ALIGN_BOTTOM - 80, `Date: ${(new Date).toLocaleDateString()}`);
-      image.print(font, Jimp.HORIZONTAL_ALIGN_LEFT, Jimp.VERTICAL_ALIGN_BOTTOM, `URL: ${link}`, 400);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_12_BLACK);
+      imageBox.print(font, Jimp.HORIZONTAL_ALIGN_LEFT, Jimp.VERTICAL_ALIGN_TOP + 20, `Date: ${(new Date).toLocaleDateString()}`);
+      imageBox.print(font, Jimp.HORIZONTAL_ALIGN_LEFT, Jimp.VERTICAL_ALIGN_TOP, `URL: ${link}`, 800);
+
+      image.composite(imageBox, 0, 0);
       image.write(`${path}-watermark.${image.getExtension()}`);
     }
   }
